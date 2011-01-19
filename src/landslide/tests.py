@@ -19,11 +19,11 @@ import re
 import unittest
 import codecs
 
-from generator import Generator
-from macro import *
-from parser import Parser
-
-from pprint import pprint
+from landslide.generator import Generator
+from landslide.parser import Parser
+from landslide.macro import (Macro, CodeHighlightingMacro,
+                             EmbedImagesMacro, FixImagePathsMacro,
+                             FxMacro, NotesMacro)
 
 
 SAMPLES_DIR = os.path.join(os.path.dirname(__file__), '..', '..', 'samples')
@@ -77,18 +77,18 @@ class GeneratorTest(BaseTestCase):
         g = Generator(os.path.join(SAMPLES_DIR, 'example3', 'slides.rst'))
         g.execute()
         s = g.render()
-        self.assertTrue(s.find('<pre>')!=-1)
+        self.assertTrue(s.find('<pre>') != -1)
         self.assertEqual(len(re.findall('<pre><span', s)), 3)
 
     def test_inputencoding(self):
         g = Generator(os.path.join(SAMPLES_DIR, 'example3', 'slides.koi8_r.rst'), encoding='koi8_r')
         content = g.render()
         # check that the string is utf_8
-        self.assertTrue(re.findall(u'русский',content, flags=re.UNICODE))
+        self.assertTrue(re.findall(u'русский', content, flags=re.UNICODE))
         g.execute()
         file_contents = codecs.open(g.destination_file, encoding='utf_8').read()
         # check that the file was properly encoded in utf_8
-        self.assertTrue(re.findall(u'русский',file_contents, flags=re.UNICODE))
+        self.assertTrue(re.findall(u'русский', file_contents, flags=re.UNICODE))
 
     def test_get_template_vars(self):
         g = Generator(os.path.join(SAMPLES_DIR, 'example1', 'slides.md'))
@@ -97,7 +97,7 @@ class GeneratorTest(BaseTestCase):
                                      {'title': None, 'level': 1},
                                     ])
         self.assertEqual(svars['head_title'], 'slide1')
-    
+
 
     def test_process_macros(self):
         g = Generator(os.path.join(SAMPLES_DIR, 'example1', 'slides.md'))
@@ -151,7 +151,7 @@ echo $bar;
 </foo>
 </pre>
 <p>End here.</p>'''
-    
+
     def test_parsing_code_blocks(self):
         m = CodeHighlightingMacro(self.logtest)
         blocks = m.code_blocks_re.findall(self.sample_html)
@@ -180,7 +180,7 @@ echo $bar;
         input = "<p>Nothing to declare</p>"
         self.assertEqual(m.process(input)[0], input)
         self.assertEqual(m.process(input)[1], [])
-    
+
     def test_process_rst_code_blocks(self):
         m = CodeHighlightingMacro(self.logtest)
         hl = m.process(self.sample_html)

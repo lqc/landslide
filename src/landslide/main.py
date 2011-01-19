@@ -16,13 +16,9 @@
 #  limitations under the License.
 
 import sys
-
-try:
-    from landslide.generator import Generator
-except ImportError:
-    from generator import Generator
-
 from optparse import OptionParser
+
+from landslide.generator import Generator
 
 def _parse_options():
     """parses ``landslide`` args options"""
@@ -127,7 +123,7 @@ def run(input_file, options):
 
 def main():
     options, input_file = _parse_options()
-    
+
     if (options.debug):
         run(input_file, options)
     else:

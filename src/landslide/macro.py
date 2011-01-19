@@ -21,11 +21,11 @@ import htmlentitydefs
 import mimetypes
 import pygments
 import sys
-import utils
 
 from pygments.lexers import get_lexer_by_name
 from pygments.formatters import HtmlFormatter
 
+from landslide import utils
 
 class Macro(object):
     """Base class for Macros. A Macro aims to analyse, process and eventually

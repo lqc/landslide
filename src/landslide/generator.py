@@ -14,18 +14,19 @@
 #  See the License for the specific language governing permissions and
 #  limitations under the License.
 
-import os
 import re
+import os.path
 import codecs
 import jinja2
 import tempfile
-import utils
 import ConfigParser
+import subprocess
 
-from macro import *
-from parser import Parser
-from subprocess import *
-
+from landslide.macro import (Macro, CodeHighlightingMacro,
+                             EmbedImagesMacro, FixImagePathsMacro,
+                             FxMacro, NotesMacro)
+from landslide.parser import Parser
+from landslide import utils
 
 BASE_DIR = os.path.dirname(__file__)
 THEMES_DIR = os.path.join(BASE_DIR, 'themes')
@@ -53,6 +54,7 @@ class Generator(object):
             FxMacro,
             NotesMacro,
         ]
+
         for macro in default_macros:
             self.register_macro(macro)
 
@@ -314,12 +316,9 @@ class Generator(object):
 
     def register_macro(self, macro_class):
         """Registers a new macro"""
-        import inspect
-        if (not inspect.isclass(macro_class)
-            or not Macro in macro_class.__bases__):
+        if not issubclass(macro_class, Macro):
             raise TypeError("A macro must inherit from landslide.macro.Macro")
-        else:
-            self.macros.append(macro_class)
+        self.macros.append(macro_class)
 
     def render(self):
         """Returns generated html code"""
@@ -355,7 +354,8 @@ class Generator(object):
         try:
             command = ["prince", f.name, self.destination_file]
 
-            process = Popen(command, stderr=dummy_fh).communicate()
+            process = subprocess.Popen(command, stderr=dummy_fh)
+            process.communicate()
         except Exception:
             raise EnvironmentError(u"Unable to generate PDF file using "
                                     "prince. Is it installed and available?")

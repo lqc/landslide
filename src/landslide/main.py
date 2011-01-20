@@ -17,8 +17,11 @@
 
 import sys
 from optparse import OptionParser
+from landslide.generator import get_generator
 
-from landslide.generator import Generator
+import logging
+logger = logging.getLogger("landslide")
+logger.setLevel(logging.DEBUG)
 
 def _parse_options():
     """parses ``landslide`` args options"""
@@ -35,7 +38,7 @@ def _parse_options():
         "-b", "--debug",
         action="store_true",
         dest="debug",
-        help="Will display any exception trace to stdin",
+        help="Will display debugging info",
         default=False
     )
 
@@ -51,7 +54,7 @@ def _parse_options():
     parser.add_option(
         "-e", "--encoding",
         dest="encoding",
-        help="The encoding of your files (defaults to utf8)",
+        help="The encoding of your files (defaults to UTF-8)",
         metavar="ENCODING",
         default="utf8"
     )
@@ -60,7 +63,7 @@ def _parse_options():
         "-i", "--embed",
         action="store_true",
         dest="embed",
-        help="Embed stylesheet and javascript contents, "
+        help="Embed stylesheet and Javascript contents, "
              "base64-encoded images in presentation to make a "
              "standalone document",
         default=False
@@ -69,7 +72,7 @@ def _parse_options():
     parser.add_option(
         "-t", "--theme",
         dest="theme",
-        help="A theme name, or path to a landlside theme directory",
+        help="A theme name, or path to a landslide theme directory",
         default='default'
     )
 
@@ -77,16 +80,16 @@ def _parse_options():
         "-o", "--direct-ouput",
         action="store_true",
         dest="direct",
-        help="Prints the generated HTML code to stdin; won't work "
+        help="Prints the generated HTML code to stdout; won't work "
              "with PDF export",
         default=False
     )
 
     parser.add_option(
         "-q", "--quiet",
-        action="store_false",
-        dest="verbose",
-        help="Won't write anything to stdin (silent mode)",
+        action="store_true",
+        dest="quiet",
+        help="Won't write anything to stdout (silent mode)",
         default=False
     )
 
@@ -94,7 +97,7 @@ def _parse_options():
         "-v", "--verbose",
         action="store_true",
         dest="verbose",
-        help="Write informational messages to stdin (enabled by "
+        help="Write informational messages to stdout (enabled by "
         "default)",
         default=True
     )
@@ -107,32 +110,35 @@ def _parse_options():
 
     return options, args[0]
 
-
-def log(message, type):
-    (sys.stdout if type == 'notice' else sys.stderr).write(message + "\n")
-
-
-def run(input_file, options):
-    generator = Generator(input_file, options.destination_file,
-                          options.theme, direct=options.direct,
-                          debug=options.debug, verbose=options.verbose,
-                          embed=options.embed, encoding=options.encoding,
-                          logger=log)
-    generator.execute()
-
-
 def main():
     options, input_file = _parse_options()
+    log_handler = logging.StreamHandler(sys.stderr if options.direct else sys.stdout)
+    log_handler.setLevel(logging.WARNING)
+    if options.verbose:
+        log_handler.setLevel(logging.INFO)
+    if options.debug:
+        log_handler.setLevel(logging.DEBUG)
+    if options.quiet:
+        log_handler.setLevel(logging.CRITICAL)
+    logger.addHandler(log_handler)
 
-    if (options.debug):
-        run(input_file, options)
+    if options.direct:
+        output = sys.stdout
+        format = "html"
     else:
-        try:
-            run(input_file, options)
-        except Exception, e:
-            sys.stderr.write("Error: %s\n" % e)
-            sys.exit(1)
+        output = options.destination_file
+        format = options.destination_file.rsplit('.', 1)[1]
 
+    generator_class = get_generator(format)
+    generator = generator_class(input_file,
+                    destination_file=output,
+                    theme=options.theme,
+                    direct=options.direct,
+                    embed=options.embed,
+                    encoding=options.encoding)
+    generator.execute()
+    logger.info("Done.    Output written to %s",
+                output if not options.direct else "stdout")
 
 if __name__ == '__main__':
     main()

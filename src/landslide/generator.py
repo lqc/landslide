@@ -18,9 +18,13 @@ import re
 import os.path
 import codecs
 import jinja2
-import tempfile
 import ConfigParser
 import subprocess
+
+try:
+    from cStringIO import StringIO
+except ImportError:
+    from StringIO import StringIO
 
 from landslide.macro import (Macro, CodeHighlightingMacro,
                              EmbedImagesMacro, FixImagePathsMacro,
@@ -32,16 +36,17 @@ BASE_DIR = os.path.dirname(__file__)
 THEMES_DIR = os.path.join(BASE_DIR, 'themes')
 TOC_MAX_LEVEL = 2
 
+from logging import getLogger
+logger = getLogger('landslide.generator')
 
-class Generator(object):
+class BaseGenerator(object):
     def __init__(self, source, destination_file='presentation.html',
-                 theme='default', direct=False, debug=False, verbose=True,
-                 embed=False, encoding='utf8', logger=None):
+                 theme='default', direct=False,
+                 embed=False, encoding='utf8'):
         """Configures this generator from its properties."""
-        self.debug = debug
         self.direct = direct
         self.encoding = encoding
-        self.logger = None
+        self.embed = embed
         self.num_slides = 0
         self.__toc = []
 
@@ -58,17 +63,10 @@ class Generator(object):
         for macro in default_macros:
             self.register_macro(macro)
 
-        if logger:
-            if callable(logger):
-                self.logger = logger
-            else:
-                raise ValueError(u"Invalid logger set, must be a callable")
-        self.verbose = False if direct else verbose and self.logger
-
         if source and os.path.exists(source):
             self.source_base_dir = os.path.split(os.path.abspath(source))[0]
             if source.endswith('.cfg'):
-                self.log(u"Config   %s" % source)
+                logger.info("Config    %s", source)
                 try:
                     config = ConfigParser.RawConfigParser()
                     config.read(source)
@@ -78,7 +76,7 @@ class Generator(object):
                                      .replace('\r', '').split('\n'))
                 if config.has_option('landslide', 'theme'):
                     theme = config.get('landslide', 'theme')
-                    self.log(u"Using    configured theme %s" % theme)
+                    logger.info(u"Using    configured theme %s", theme)
                 if config.has_option('landslide', 'destination'):
                     destination_file = config.get('landslide', 'destination')
             else:
@@ -87,24 +85,13 @@ class Generator(object):
             raise IOError(u"Source file/directory %s does not exist"
                           % source)
 
-        if (os.path.exists(destination_file)
-            and not os.path.isfile(destination_file)):
-            raise IOError(u"Destination %s exists and is not a file"
+        # if given a path, do some validation
+        if isinstance(destination_file, basestring):
+            if os.path.exists(destination_file) \
+               and not os.path.isfile(destination_file):
+                raise ValueError(u"Destination %s exists and is not a file"
                           % destination_file)
-        else:
-            self.destination_file = destination_file
-
-        if self.destination_file.endswith('.html'):
-            self.file_type = 'html'
-        elif self.destination_file.endswith('.pdf'):
-            self.file_type = 'pdf'
-        else:
-            raise IOError(u"This program can only write html or pdf files. "
-                           "Please use one of these file extensions in the "
-                           "destination")
-
-        self.embed = True if self.file_type == 'pdf' else embed
-
+        self.destination_file = destination_file
         self.theme = theme if theme else 'default'
 
         if os.path.exists(theme):
@@ -147,18 +134,6 @@ class Generator(object):
 
     toc = property(get_toc, set_toc)
 
-    def execute(self):
-        """Execute this generator regarding its current configuration"""
-        if self.direct:
-            if self.file_type == 'pdf':
-                raise IOError(u"Direct output mode is not available for PDF "
-                               "export")
-            else:
-                print self.render()
-        else:
-            self.write()
-            self.log(u"Generated file: %s" % self.destination_file)
-
     def fetch_contents(self, source):
         """Recursively fetches Markdown contents from a single file or
         directory containing itself Markdown files
@@ -169,7 +144,7 @@ class Generator(object):
             for entry in source:
                 slides.extend(self.fetch_contents(entry))
         elif os.path.isdir(source):
-            self.log(u"Entering %s" % source)
+            logger.info(u"Entering %s", source)
             entries = os.listdir(source)
             entries.sort()
             for entry in entries:
@@ -180,7 +155,7 @@ class Generator(object):
             except NotImplementedError:
                 return slides
 
-            self.log(u"Adding   %s (%s)" % (source, parser.format))
+            logger.info(u"Adding   %s (%s)", source, parser.format)
 
             try:
                 file = codecs.open(source, encoding=self.encoding)
@@ -194,7 +169,7 @@ class Generator(object):
                     slides.append(self.get_slide_vars(inner_slide, source))
 
         if not slides:
-            self.log(u"Exiting  %s: no contents found" % source, 'notice')
+            logger.warn(u"Exiting  %s: no contents found", source)
 
         return slides
 
@@ -222,8 +197,7 @@ class Generator(object):
             css['screen'] = {'path_url': utils.get_abs_path_url(screen_css),
                              'contents': open(screen_css).read()}
         else:
-            self.log(u"No screen stylesheet provided in current theme",
-                      'warning')
+            logger.warn(u"No screen stylesheet provided in current theme")
 
         return css
 
@@ -295,23 +269,18 @@ class Generator(object):
                 'slides': slides, 'toc': self.toc, 'embed': self.embed,
                 'css': self.get_css(), 'js': self.get_js()}
 
-    def log(self, message, type='notice'):
-        """Log a message (eventually, override to do something more clever)"""
-        if self.verbose and self.logger:
-            self.logger(message, type)
-
     def process_macros(self, content, source=None):
         """Processed all macros"""
         classes = []
         for macro_class in self.macros:
+            macro = macro_class(embed=self.embed)
             try:
-                macro = macro_class(logger=self.logger, embed=self.embed)
                 content, add_classes = macro.process(content, source)
                 if add_classes:
                     classes += add_classes
             except Exception, e:
-                self.log(u"%s processing failed in %s: %s"
-                         % (macro, source, e))
+                logger.info(u"%s processing failed in %s: %s",
+                         macro, source, e)
         return content, classes
 
     def register_macro(self, macro_class):
@@ -327,37 +296,44 @@ class Generator(object):
         slides = self.fetch_contents(self.source)
         return template.render(self.get_template_vars(slides))
 
-    def write(self):
+    def write(self, output, html):
         """Writes generated presentation code into the destination file"""
-        html = self.render()
+        output.write(html.encode('utf-8'))
 
-        if self.file_type == 'pdf':
-            self.write_pdf(html)
+    def execute(self):
+        """Execute this generator regarding its current configuration"""
+        if isinstance(self.destination_file, basestring):
+            outfile = open(self.destination_file, 'w')
         else:
-            outfile = codecs.open(self.destination_file, 'w',
-                                  encoding='utf_8')
-            outfile.write(html)
+            outfile = self.destination_file
+        self.write(outfile, self.render())
 
-    def write_pdf(self, html):
+
+class HTMLGenerator(BaseGenerator):
+    pass
+
+
+class PDFGenerator(BaseGenerator):
+
+    def write(self, output, html):
         """Tries to write a PDF export from the command line using PrinceXML if
         available
         """
+        input = StringIO(html)
         try:
-            f = tempfile.NamedTemporaryFile(delete=False, suffix='.html')
-            f.write(html.encode('utf_8', 'xmlcharrefreplace'))
-            f.close()
-        except Exception:
-            raise IOError(u"Unable to create temporary file, aborting")
-
-        dummy_fh = open(os.path.devnull, 'w')
-
-        try:
-            command = ["prince", f.name, self.destination_file]
-
-            process = subprocess.Popen(command, stderr=dummy_fh)
+            process = subprocess.Popen(["prince", "-", "-o -"],
+                    stdin=input, stdout=output, stderr=subprocess.PIPE)
             process.communicate()
         except Exception:
             raise EnvironmentError(u"Unable to generate PDF file using "
                                     "prince. Is it installed and available?")
         finally:
             dummy_fh.close()
+
+_generators = {
+    'html': HTMLGenerator,
+    'pdf': PDFGenerator,
+}
+
+def get_generator(output_type):
+    return _generators[output_type]

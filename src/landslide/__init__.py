@@ -1,2 +1,2 @@
 from landslide.macro import Macro
-from landslide.generator import Generator
+from landslide.generator import get_generator

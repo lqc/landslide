@@ -20,20 +20,20 @@ import base64
 import htmlentitydefs
 import mimetypes
 import pygments
-import sys
 
 from pygments.lexers import get_lexer_by_name
 from pygments.formatters import HtmlFormatter
 
 from landslide import utils
+from logging import getLogger
+logger = getLogger('landslide.macro')
 
 class Macro(object):
     """Base class for Macros. A Macro aims to analyse, process and eventually
     alter some provided HTML contents and to provide supplementary informations
     to the slide context.
     """
-    def __init__(self, logger=sys.stdout, embed=False):
-        self.logger = logger
+    def __init__(self, embed=False):
         self.embed = embed
 
     def process(self, content, source=None):
@@ -99,8 +99,8 @@ class EmbedImagesMacro(Macro):
                 continue
 
             if image_url.startswith('file://'):
-                self.logger(u"%s: file:// image urls are not supported: "
-                             "skipped" % source, 'warning')
+                logger.warning(u"%s: file:// image urls are not supported: "
+                             "skipped" % source)
                 continue
 
             if (image_url.startswith('http://')
@@ -113,34 +113,32 @@ class EmbedImagesMacro(Macro):
                                                image_url)
 
             if not os.path.exists(image_real_path):
-                self.logger(u"%s: image file %s not found: skipped"
-                            % (source, image_real_path), 'warning')
+                logger.warn(u"%s: image file %s not found: skipped"
+                            % (source, image_real_path))
                 continue
 
             mime_type, encoding = mimetypes.guess_type(image_real_path)
 
             if not mime_type:
-                self.logger(u"%s: unknown image mime-type in %s: skipped"
-                            % (source, image_real_path), 'warning')
+                logger.warn(u"%s: unknown image mime-type in %s: skipped"
+                            % (source, image_real_path))
                 continue
 
             try:
                 image_contents = open(image_real_path).read()
                 encoded_image = base64.b64encode(image_contents)
             except IOError:
-                self.logger(u"%s: unable to read image %s: skipping"
-                            % (source, image_real_path), 'warning')
+                logger.warn(u"%s: unable to read image %s: skipping"
+                            % (source, image_real_path))
                 continue
             except Exception:
-                self.logger(u"%s: unable to base64-encode image %s: skipping"
-                            % (source, image_real_path), 'warning')
+                logger.warn(u"%s: unable to base64-encode image %s: skipping"
+                            % (source, image_real_path))
                 continue
 
             encoded_url = u"data:%s;base64,%s" % (mime_type, encoded_image)
-
             content = content.replace(image_url, encoded_url, 1)
-
-            self.logger(u"Embedded image %s" % image_real_path, 'notice')
+            logger.info(u"Embedded image %s" % image_real_path)
 
         return content, classes
 
